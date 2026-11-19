@@ -11,7 +11,7 @@ import pytest
 
 from acm_coach.evaluation.metrics import aggregate, hit_at_k, mrr_at_k, ndcg_at_k, recall_at_k
 from acm_coach.rag.bm25 import BM25Index
-from acm_coach.rag.query import build_query, extract_code_signals, is_followup, split_code
+from acm_coach.rag.query import build_query, extract_code_signals, split_code
 from acm_coach.rag.text import expand_query, tokenize
 from acm_coach.services.knowledge_service import compose_curated_content, to_records
 

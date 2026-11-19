@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from sqlalchemy import text
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter
 from fastapi.responses import PlainTextResponse
 
 from acm_coach.api.deps import DbSession, StaffUser
@@ -63,7 +63,7 @@ def prometheus_metrics(user: StaffUser):
 
 @router.get("/api/v1/ops/overview")
 def ops_overview(db: DbSession, user: StaffUser):
-    from acm_coach.db.repositories import ChatRepository, KnowledgeRepository
+    from acm_coach.db.repositories import KnowledgeRepository
 
     retriever = get_retriever()
     return {

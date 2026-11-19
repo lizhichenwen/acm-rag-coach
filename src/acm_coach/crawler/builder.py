@@ -15,7 +15,6 @@ import hashlib
 import json
 from datetime import datetime, timezone
 
-from acm_coach.config import get_settings
 from acm_coach.crawler.sources import RawProblem
 from acm_coach.crawler.taxonomy import ATCODER_SUFFIX_HINT, Taxonomy, atcoder_tier, cf_tier
 

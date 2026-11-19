@@ -31,4 +31,9 @@ target-version = "py310"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
-ignore = ["E501"]
+# E501: 行长度由 formatter 管，不在此报错
+# UP009: 项目统一保留 "# -*- coding: utf-8 -*-" 头（Py2/3 兼容惯例，无害）
+# I001:  import 顺序不强制，避免教学代码里为分组反复调整
+# UP037: 字符串形式的类型注解在 from __future__ import annotations 下可读性更好，保留
+# B905:  zip 不强制 strict（Python 3.10 目标， strict 仅 3.10+，且多处为等长遍历）
+ignore = ["E501", "UP009", "I001", "UP037", "B905"]

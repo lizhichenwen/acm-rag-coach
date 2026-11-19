@@ -12,7 +12,7 @@ from fastapi import APIRouter, Query, Request
 
 from acm_coach.api.deps import AdminUser, DbSession, audit
 from acm_coach.api.schemas import (
-    AdminUserResponse, KnowledgeCreateRequest, PageResponse, UserRoleUpdate,
+    AdminUserResponse, KnowledgeCreateRequest, UserRoleUpdate,
 )
 from acm_coach.core.errors import Conflict, Forbidden, NotFound
 from acm_coach.db.repositories import KnowledgeRepository, UserRepository

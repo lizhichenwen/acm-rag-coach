@@ -17,7 +17,7 @@ import statistics
 import time
 
 from acm_coach.config import get_settings
-from acm_coach.rag.index import HybridRetriever, get_retriever
+from acm_coach.rag.index import get_retriever
 
 # 域外问题：用来估计"不该命中时"的相似度上界
 OUT_OF_SCOPE = [

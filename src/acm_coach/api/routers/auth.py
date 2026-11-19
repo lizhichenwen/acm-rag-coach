@@ -9,9 +9,8 @@
 """
 from __future__ import annotations
 
-from datetime import datetime
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Request
 
 from acm_coach.api.deps import DbSession, CurrentUser, audit
 from acm_coach.api.schemas import (
