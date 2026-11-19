@@ -1,0 +1,65 @@
+# ============================================================
+# ACM 智能陪练系统 v4 — Git 忽略清单
+# 原则：密钥 / 运行时数据 / 可重建产物 一律不上传。
+# 唯一例外是 .env.example（纯占位符模板），必须提交。
+#
+# 注意：gitignore 不支持行尾注释，# 必须单独占一行，
+# 否则会被当成路径的一部分导致规则失效。
+# ============================================================
+
+# ---------- 1. 密钥与环境（最高优先级，绝不提交） ----------
+.env
+*.env
+!.env.example
+data/.secret
+*.secret
+*.pem
+*.key
+
+# ---------- 2. Python 运行时 ----------
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+venv/
+.venv/
+env/
+ENV/
+
+# ---------- 3. 数据库与向量索引（可重建，且含用户数据） ----------
+data/*.db
+data/*.db-wal
+data/*.db-shm
+data/*.sqlite3
+data/chroma/
+data/index/
+data/raw/
+data/logs/
+
+# ---------- 4. 大体积临时产物 ----------
+*.log
+*.pickle
+*.pkl
+*.bin
+*.parquet
+*.tmp
+
+# ---------- 5. 编辑器 / 系统 ----------
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
+
+# ---------- 6. 保留（不忽略）的 data 子目录 ----------
+# data/curated/   精讲条目
+# data/taxonomy/  标签体系与映射
+# data/reports/   评测报告（含实测指标，论文依据）
+# data/labels/    人工标注模板
+# 以上总量 <200KB，clone 后即可看到数据规模证据。

@@ -1,0 +1,11 @@
+[
+  {
+    "_说明": "这是模板。gold_cause 必须人工填写 ET01~ET15（或 AC），留空会被脚本拒绝，防止伪造准确率。删除本条说明后填写真实标注。",
+    "problem_title": "示例：三重循环求二元组合",
+    "code": "for(int i=0;i<n;i++){\n  if(a[i]){x++;}\n  for(int j=0;j<n;j++){\n    for(int k=0;k<n;k++){ ans+=a[i]*a[j]*a[k]; }\n  }\n}",
+    "verdict": "TLE",
+    "language": "cpp",
+    "gold_cause": "",
+    "gold_points": []
+  }
+]

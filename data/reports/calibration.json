@@ -1,0 +1,26 @@
+{
+  "corpus_size": 8558,
+  "vector_coverage": 8558,
+  "embed_model": "BAAI/bge-small-zh-v1.5",
+  "metric": "cosine",
+  "sampled_at": "2026-11-08 01:04",
+  "in_scope": {
+    "n": 96,
+    "p10": 0.8369,
+    "p25": 0.9382,
+    "median": 0.9839,
+    "p75": 0.9957,
+    "max": 0.9999
+  },
+  "out_of_scope": {
+    "n": 8,
+    "median": 0.3839,
+    "p90": 0.552,
+    "max": 0.7646
+  },
+  "recommended": {
+    "strong_threshold": 0.9382,
+    "weak_threshold": 0.5720000000000001
+  },
+  "fingerprint": "n=8558;model=BAAI/bge-small-zh-v1.5;metric=cosine"
+}

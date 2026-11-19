@@ -1,0 +1,153 @@
+{
+  "generated_at": "2026-11-08 01:43:27",
+  "corpus_size": 8558,
+  "vector_coverage": 8558,
+  "queries": 150,
+  "semantics": {
+    "jaccard_threshold": 0.5,
+    "rel_scale": "2=目标条目, 1=同题标签相似, 0=未标注",
+    "gate": "off（消融只比排序，不做三档截断）"
+  },
+  "configs": {
+    "g1": {
+      "queries": 150,
+      "hit@1": 0.6667,
+      "hit@3": 0.7333,
+      "hit@5": 0.7467,
+      "hit@10": 0.7467,
+      "mrr@10": 0.7022,
+      "recall@100": 0.6073,
+      "ndcg@10": 0.6273,
+      "latency_p50_ms": 23.06,
+      "latency_p95_ms": 27.72,
+      "empty_rate": 0.0,
+      "level_distribution": {
+        "strong": 150,
+        "weak": 0,
+        "none": 0
+      },
+      "by_type": {
+        "mistake": {
+          "n": 53,
+          "hit@5": 0.9811,
+          "mrr@10": 0.9104
+        },
+        "concept": {
+          "n": 46,
+          "hit@5": 0.1957,
+          "mrr@10": 0.1703
+        },
+        "solution": {
+          "n": 51,
+          "hit@5": 1.0,
+          "mrr@10": 0.9657
+        }
+      }
+    },
+    "g2": {
+      "queries": 150,
+      "hit@1": 0.28,
+      "hit@3": 0.3,
+      "hit@5": 0.3067,
+      "hit@10": 0.3333,
+      "mrr@10": 0.2941,
+      "recall@100": 0.2058,
+      "ndcg@10": 0.2332,
+      "latency_p50_ms": 39.53,
+      "latency_p95_ms": 45.29,
+      "empty_rate": 0.0,
+      "level_distribution": {
+        "strong": 150,
+        "weak": 0,
+        "none": 0
+      },
+      "by_type": {
+        "mistake": {
+          "n": 53,
+          "hit@5": 0.3774,
+          "mrr@10": 0.3585
+        },
+        "concept": {
+          "n": 46,
+          "hit@5": 0.087,
+          "mrr@10": 0.0678
+        },
+        "solution": {
+          "n": 51,
+          "hit@5": 0.4314,
+          "mrr@10": 0.4314
+        }
+      }
+    },
+    "g3": {
+      "queries": 150,
+      "hit@1": 0.6067,
+      "hit@3": 0.7133,
+      "hit@5": 0.72,
+      "hit@10": 0.7333,
+      "mrr@10": 0.6582,
+      "recall@100": 0.6216,
+      "ndcg@10": 0.6091,
+      "latency_p50_ms": 64.97,
+      "latency_p95_ms": 73.4,
+      "empty_rate": 0.0,
+      "level_distribution": {
+        "strong": 150,
+        "weak": 0,
+        "none": 0
+      },
+      "by_type": {
+        "mistake": {
+          "n": 53,
+          "hit@5": 0.9434,
+          "mrr@10": 0.8506
+        },
+        "concept": {
+          "n": 46,
+          "hit@5": 0.1522,
+          "mrr@10": 0.1444
+        },
+        "solution": {
+          "n": 51,
+          "hit@5": 1.0,
+          "mrr@10": 0.9216
+        }
+      }
+    },
+    "g4": {
+      "queries": 150,
+      "hit@1": 0.6067,
+      "hit@3": 0.7133,
+      "hit@5": 0.72,
+      "hit@10": 0.7333,
+      "mrr@10": 0.6582,
+      "recall@100": 0.6216,
+      "ndcg@10": 0.6091,
+      "latency_p50_ms": 65.32,
+      "latency_p95_ms": 75.91,
+      "empty_rate": 0.0,
+      "level_distribution": {
+        "strong": 150,
+        "weak": 0,
+        "none": 0
+      },
+      "by_type": {
+        "mistake": {
+          "n": 53,
+          "hit@5": 0.9434,
+          "mrr@10": 0.8506
+        },
+        "concept": {
+          "n": 46,
+          "hit@5": 0.1522,
+          "mrr@10": 0.1444
+        },
+        "solution": {
+          "n": 51,
+          "hit@5": 1.0,
+          "mrr@10": 0.9216
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,19 @@
+# 运行依赖（部署需要）
+# 版本下限按 v4.1 实际验证环境（venv/Python 3.13）收紧，避免跨主版本漂移。
+# 实测版本：fastapi 0.162.2 / uvicorn 0.54.0 / sqlalchemy 2.1.8 / pyjwt 2.15.1 /
+#          openai 3.46.0 / chromadb 1.5.9 / sentence-transformers 6.2.0 /
+#          httpx 0.28.1 / pydantic 2.14.3 / pydantic-settings 2.16.2 /
+#          jieba 0.42.1 / streamlit 1.67.0 / pandas 3.1.1
+fastapi>=0.162
+uvicorn>=0.54
+sqlalchemy>=2.1
+pyjwt>=2.15
+openai>=3.46
+chromadb>=1.5
+sentence-transformers>=6.2
+httpx>=0.28
+pydantic>=2.14
+pydantic-settings>=2.16
+jieba>=0.42
+streamlit>=1.67
+pandas>=3.0

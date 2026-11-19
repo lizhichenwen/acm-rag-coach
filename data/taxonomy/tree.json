@@ -1,0 +1,122 @@
+[
+  {
+    "domain": "基础与实现",
+    "children": [
+      {"point": "模拟与实现", "tags": ["模拟", "输入输出", "格式控制"], "cf_tags": ["implementation"]},
+      {"point": "暴力枚举", "tags": ["暴力枚举", "枚举顺序", "剪枝"], "cf_tags": ["brute force"]},
+      {"point": "排序", "tags": ["排序", "自定义比较器", "计数排序", "基数排序"], "cf_tags": ["sortings"]},
+      {"point": "位运算与掩码", "tags": ["位运算", "lowbit", "子集枚举", "状态压缩"], "cf_tags": ["bitmasks"]},
+      {"point": "离散化", "tags": ["离散化", "映射", "坐标压缩"], "cf_tags": ["sortings"]},
+      {"point": "高精度与大数", "tags": ["高精度", "大数运算", "压位"], "cf_tags": []},
+      {"point": "输入输出与常数优化", "tags": ["输入输出", "性能", "常数优化"], "cf_tags": ["implementation"]}
+    ]
+  },
+  {
+    "domain": "算法思想",
+    "children": [
+      {"point": "二分与二分答案", "tags": ["二分", "二分答案", "单调性", "判定函数"], "cf_tags": ["binary search"]},
+      {"point": "双指针与滑动窗口", "tags": ["双指针", "滑动窗口", "去重"], "cf_tags": ["two pointers"]},
+      {"point": "前缀和与差分", "tags": ["前缀和", "差分", "区间和"], "cf_tags": []},
+      {"point": "贪心", "tags": ["贪心", "排序不等式", "交换论证"], "cf_tags": ["greedy"]},
+      {"point": "区间调度", "tags": ["区间调度", "活动选择", "截止时间"], "cf_tags": ["schedules"]},
+      {"point": "分治", "tags": ["分治", "归并", "逆序对", "跨区间合并"], "cf_tags": ["divide and conquer"]},
+      {"point": "深度优先搜索", "tags": ["DFS", "搜索", "回溯", "连通块"], "cf_tags": ["dfs and similar", "graphs"]},
+      {"point": "广度优先搜索", "tags": ["BFS", "队列", "最少步数", "多源BFS"], "cf_tags": ["graphs"]},
+      {"point": "折半搜索", "tags": ["折半搜索", "双向枚举", "两半配对"], "cf_tags": ["meet-in-the-middle"]},
+      {"point": "三分查找", "tags": ["三分", "单峰函数", "凸性", "实数三分"], "cf_tags": ["ternary search"]},
+      {"point": "构造算法", "tags": ["构造", "对称构造", "奇偶分析", "特判"], "cf_tags": ["constructive algorithms"]},
+      {"point": "启发式搜索", "tags": ["A星", "启发式", "可采纳性"], "cf_tags": []}
+    ]
+  },
+  {
+    "domain": "数据结构",
+    "children": [
+      {"point": "栈与队列", "tags": ["栈", "队列", "单调栈", "单调队列"], "cf_tags": ["data structures"]},
+      {"point": "堆与优先队列", "tags": ["堆", "优先队列", "哈夫曼", "topk"], "cf_tags": ["data structures"]},
+      {"point": "并查集", "tags": ["并查集", "路径压缩", "按秩合并", "带权并查集"], "cf_tags": ["dsu"]},
+      {"point": "树状数组", "tags": ["树状数组", "lowbit", "前缀和"], "cf_tags": ["data structures"]},
+      {"point": "线段树", "tags": ["线段树", "懒标记", "区间合并", "动态开点"], "cf_tags": ["data structures"]},
+      {"point": "ST 表", "tags": ["ST表", "稀疏表", "区间最值", "倍增"], "cf_tags": ["data structures"]},
+      {"point": "字典树", "tags": ["Trie", "字典树", "前缀统计"], "cf_tags": ["data structures"]},
+      {"point": "哈希表与映射", "tags": ["哈希表", "映射", "去重", "计数"], "cf_tags": []},
+      {"point": "表达式解析", "tags": ["表达式", "中缀转后缀", "双栈求值", "括号匹配"], "cf_tags": ["expression parsing"]},
+      {"point": "有序集合与平衡树", "tags": ["平衡树", "有序集合", "set", "前驱后继"], "cf_tags": ["data structures"]}
+    ]
+  },
+  {
+    "domain": "图论",
+    "children": [
+      {"point": "图的表示与遍历", "tags": ["图论", "邻接表", "连通块", "网格图"], "cf_tags": ["graphs"]},
+      {"point": "拓扑排序", "tags": ["拓扑排序", "入度", "有向无环图", "判环"], "cf_tags": ["graphs"]},
+      {"point": "最短路", "tags": ["最短路", "Dijkstra", "Floyd", "Bellman-Ford", "SPFA"], "cf_tags": ["shortest paths"]},
+      {"point": "最小生成树", "tags": ["最小生成树", "Kruskal", "Prim"], "cf_tags": ["graphs"]},
+      {"point": "树的遍历与直径", "tags": ["树", "树的遍历", "树的直径", "两次BFS"], "cf_tags": ["trees"]},
+      {"point": "最近公共祖先", "tags": ["LCA", "倍增", "欧拉序", "RMQ"], "cf_tags": ["trees"]},
+      {"point": "二分图与染色", "tags": ["二分图", "染色法", "奇环"], "cf_tags": ["graphs"]},
+      {"point": "图匹配", "tags": ["匹配", "匈牙利算法", "增广路", "最大匹配"], "cf_tags": ["graph matchings"]},
+      {"point": "网络流", "tags": ["网络流", "最大流", "最小割", "费用流", "Dinic"], "cf_tags": ["flows"]},
+      {"point": "强连通分量与 2-SAT", "tags": ["强连通分量", "Tarjan", "缩点", "2-SAT"], "cf_tags": ["2-sat"]}
+    ]
+  },
+  {
+    "domain": "动态规划",
+    "children": [
+      {"point": "线性 DP", "tags": ["动态规划", "线性DP", "最大子段和", "LIS", "LCS"], "cf_tags": ["dp"]},
+      {"point": "背包 DP", "tags": ["背包", "01背包", "完全背包", "多重背包", "分组背包"], "cf_tags": ["dp"]},
+      {"point": "区间 DP", "tags": ["区间", "区间DP", "石子合并", "环形DP"], "cf_tags": ["dp"]},
+      {"point": "树形 DP", "tags": ["树形DP", "树上背包", "换根DP"], "cf_tags": ["dp", "trees"]},
+      {"point": "状压 DP", "tags": ["状压", "状态压缩", "旅行商", "子集DP"], "cf_tags": ["dp", "bitmasks"]},
+      {"point": "数位 DP", "tags": ["数位", "数位DP", "数位统计", "前导零"], "cf_tags": ["dp"]},
+      {"point": "概率与期望 DP", "tags": ["期望", "概率", "期望线性性", "概率DP"], "cf_tags": ["dp", "probabilities"]},
+      {"point": "DP 优化", "tags": ["优化", "斜率优化", "单调队列优化", "决策单调性"], "cf_tags": ["dp"]},
+      {"point": "记忆化搜索", "tags": ["记忆化搜索", "递归", "缓存状态"], "cf_tags": ["dp", "dfs and similar"]}
+    ]
+  },
+  {
+    "domain": "数学",
+    "children": [
+      {"point": "数论基础", "tags": ["数论", "gcd", "扩展欧几里得", "同余"], "cf_tags": ["number theory"]},
+      {"point": "素数筛与质因数分解", "tags": ["素数", "埃氏筛", "欧拉筛", "质因数分解"], "cf_tags": ["number theory"]},
+      {"point": "快速幂与逆元", "tags": ["快速幂", "模运算", "逆元", "费马小定理"], "cf_tags": ["math", "number theory"]},
+      {"point": "组合数学", "tags": ["组合数学", "组合数取模", "容斥", "卡特兰数"], "cf_tags": ["combinatorics"]},
+      {"point": "中国剩余定理", "tags": ["同余方程组", "中国剩余定理", "CRT", "扩展CRT"], "cf_tags": ["chinese remainder theorem"]},
+      {"point": "矩阵与递推加速", "tags": ["矩阵", "矩阵快速幂", "递推加速", "转移矩阵"], "cf_tags": ["matrices"]},
+      {"point": "博弈论", "tags": ["博弈", "SG函数", "Nim博弈", "必胜必败态"], "cf_tags": ["games"]},
+      {"point": "概率与期望", "tags": ["概率", "期望", "随机化", "期望贡献"], "cf_tags": ["probabilities"]},
+      {"point": "多项式与卷积", "tags": ["FFT", "NTT", "卷积", "多项式乘法"], "cf_tags": ["fft"]},
+      {"point": "取模与取整细节", "tags": ["取整", "溢出", "负数取模", "整除方向"], "cf_tags": ["math"]}
+    ]
+  },
+  {
+    "domain": "字符串",
+    "children": [
+      {"point": "字符串匹配", "tags": ["字符串", "KMP", "next数组", "失配回退"], "cf_tags": ["strings"]},
+      {"point": "回文处理", "tags": ["回文", "Manacher", "中心扩展", "奇偶长度"], "cf_tags": ["strings"]},
+      {"point": "字符串哈希", "tags": ["哈希", "字符串哈希", "双哈希", "前缀哈希"], "cf_tags": ["hashing"]},
+      {"point": "后缀结构", "tags": ["后缀数组", "SA", "height数组", "后缀自动机"], "cf_tags": ["string suffix structures"]},
+      {"point": "字典树与前缀统计", "tags": ["Trie", "字典树", "前缀统计", "01Trie"], "cf_tags": ["strings", "data structures"]}
+    ]
+  },
+  {
+    "domain": "计算几何",
+    "children": [
+      {"point": "叉积与方向判定", "tags": ["计算几何", "叉积", "向量", "共线判定"], "cf_tags": ["geometry"]},
+      {"point": "凸包", "tags": ["凸包", "Andrew", "极角排序", "单调链"], "cf_tags": ["geometry"]},
+      {"point": "扫描线与面积并", "tags": ["扫描线", "矩形面积并", "事件排序"], "cf_tags": ["geometry", "data structures"]},
+      {"point": "精度与浮点处理", "tags": ["精度", "浮点", "eps", "整数几何"], "cf_tags": ["geometry"]}
+    ]
+  },
+  {
+    "domain": "竞赛技巧",
+    "children": [
+      {"point": "交互题", "tags": ["交互题", "flush", "询问次数", "自写交互器"], "cf_tags": ["interactive", "communication"]},
+      {"point": "对拍与随机化验证", "tags": ["对拍", "随机化", "数据生成器", "压力测试"], "cf_tags": []},
+      {"point": "赛时策略与罚时管理", "tags": ["赛时策略", "竞赛策略", "罚时", "团队分工"], "cf_tags": []},
+      {"point": "读题与样例分析", "tags": ["读题", "样例分析", "约束翻译"], "cf_tags": []},
+      {"point": "复杂度估算与 TLE 排查", "tags": ["复杂度", "TLE", "性能", "内存估算"], "cf_tags": []},
+      {"point": "训练路线与刷题方法", "tags": ["训练路线", "训练方法", "刷题", "Rating"], "cf_tags": []},
+      {"point": "算法选型", "tags": ["选型", "算法选型", "策略对比"], "cf_tags": []},
+      {"point": "赛制规则", "tags": ["赛制", "ICPC", "CCPC", "Codeforces"], "cf_tags": []}
+    ]
+  }
+]
