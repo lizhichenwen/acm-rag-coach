@@ -1,7 +1,7 @@
 # ACM 智能陪练系统 v4 — 代码审查报告
 
 - 审查目标：`D:/ACM_RAG/acm_rag_v4/`
-- 审查依据：附件2毕业论文任务书、附件3毕业论文开题报告（罗平）
+- 审查依据：附件2毕业论文任务书、附件3毕业论文开题报告
 - 审查范围：全量 src/ + tests/ + 参考 data/reports/
 - 技术栈：Python 3.13 / FastAPI / Streamlit / SQLAlchemy / SQLite(WAL) / ChromaDB / bge-small-zh-v1.5 / DeepSeek API
 - 总体评分：**8.5 / 10**（架构与工程质量在本科毕设中属上乘；扣分集中在实证数据缺失）
