@@ -7,6 +7,7 @@
 """
 from __future__ import annotations
 
+import sys
 from types import SimpleNamespace
 
 from acm_coach.rag import rerank as rerank_mod
@@ -37,6 +38,18 @@ def _reset(monkeypatch):
     monkeypatch.setattr(rerank_mod, "_LAST_BACKEND", "off")
 
 
+def _fake_cross_encoder(monkeypatch, predict_fn):
+    """用轻量假模块顶替 sentence_transformers，CI 不装重型依赖也能跑。"""
+    import types
+
+    fake = types.ModuleType("sentence_transformers")
+    fake.CrossEncoder = type("CrossEncoder", (), {
+        "__init__": lambda self, model_name, local_files_only=True: None,
+        "predict": lambda self, pairs, show_progress_bar=False, **kw: predict_fn(pairs),
+    })
+    monkeypatch.setitem(sys.modules, "sentence_transformers", fake)
+
+
 class TestRerankBackend:
     def test_disabled_keeps_original_order(self, monkeypatch):
         _reset(monkeypatch)
@@ -58,23 +71,17 @@ class TestRerankBackend:
 
     def test_cache_hit_skips_model_predict(self, monkeypatch):
         """同一 query + 同一候选池，第二次调用不应再触发模型推理。"""
-        import sentence_transformers
-
         _reset(monkeypatch)
         rerank_mod.clear_cache()
         monkeypatch.setattr(rerank_mod, "_model_cached", lambda name: True)
 
         calls = []
 
-        class FakeCrossEncoder:
-            def __init__(self, model_name, local_files_only=True):
-                pass
+        def predict(pairs):
+            calls.append(len(pairs))
+            return [5.0 if "倒序" in doc else -1.0 for _q, doc in pairs]
 
-            def predict(self, pairs, show_progress_bar=False, **kwargs):
-                calls.append(len(pairs))
-                return [5.0 if "倒序" in doc else -1.0 for _q, doc in pairs]
-
-        monkeypatch.setattr(sentence_transformers, "CrossEncoder", FakeCrossEncoder)
+        _fake_cross_encoder(monkeypatch, predict)
         s = _settings(True)
         rerank("倒序", _hits(), s)
         rerank("倒序", _hits(), s)
@@ -83,19 +90,11 @@ class TestRerankBackend:
 
     def test_off_call_does_not_lock_model_loading(self, monkeypatch):
         """回归：旧实现把 _MODEL_TRIED 在 enable_rerank 判定前置位，G4 永远拿不到模型。"""
-        import sentence_transformers
-
         _reset(monkeypatch)
         monkeypatch.setattr(rerank_mod, "_model_cached", lambda name: True)
 
-        class FakeCrossEncoder:
-            def __init__(self, model_name, local_files_only=True):
-                self.model_name = model_name
-
-            def predict(self, pairs, show_progress_bar=False):
-                return [5.0 if "倒序" in doc else -1.0 for _q, doc in pairs]
-
-        monkeypatch.setattr(sentence_transformers, "CrossEncoder", FakeCrossEncoder)
+        _fake_cross_encoder(monkeypatch,
+                            lambda pairs: [5.0 if "倒序" in doc else -1.0 for _q, doc in pairs])
 
         # 先跑一个关重排的分组（G1/G2/G3 的语义）
         assert get_reranker(_settings(False)) is None
