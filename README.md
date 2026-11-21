@@ -108,6 +108,12 @@ pip install -r requirements.txt
 # 2) 配置
 copy .env.example .env      # 留空 DEEPSEEK_API_KEY 也能跑（降级模式）
 
+# 2.5) 预下载重排模型（G4 真实 cross-encoder 必需，约 1.1 GB）
+# Windows 国内网络建议走镜像；下载一次后自动缓存在 ~/.cache/huggingface
+set HF_ENDPOINT=https://hf-mirror.com
+venv\Scripts\python.exe -c "from sentence_transformers import CrossEncoder; CrossEncoder('BAAI/bge-reranker-base')"
+# 不下载也能跑，但重排会降级为融合打分（见已知限制 2）
+
 # 3) 建库 + 导入语料 + 建索引
 python -m acm_coach.cli init-db
 python -m acm_coach.cli ingest
@@ -119,8 +125,43 @@ python -m acm_coach.cli index --max-vectors 1500   # 分批建向量，可反复
 3.新窗口D:\ACM_RAG\acm_rag_v4：streamlit run frontend/app.py          # http://localhost:8501
 ```
 
+> **启动快慢（2026-11-21 优化）**：`serve` 后 **~1s 即可登录**（`/healthz` 立即可用），
+> 索引与模型在后台线程预热（约 12s）；`/readyz` 会等到索引真正就绪才返回 200。
+> 首个检索请求若在预热完成前到达，会在锁上等待、不会拿到空索引。
+> `WARMUP_RERANKER=false` 可让重排模型改为首次对话再加载（省约 1.2GB 常驻内存）。
+
 > 首次登录：管理员口令见 `.env` 的 `ADMIN_PASSWORD`；未配置时启动日志会打印**一次性随机口令**。
 > 不提供任何默认口令（`admin123` 之类）。
+
+### 部署到阿里云学生机（300 元券方案）
+
+选型：**轻量应用服务器 2 核 4 GB / Ubuntu 22.04**，按学生券额度通常可覆盖一年。
+内存要给足：重排模型约 1.1 GB + bge-small 约 95 MB + Python 进程，2 GB 会频繁换页。
+
+```bash
+# 1) 宿主预下载模型（Dockerfile 设了 HF_HUB_OFFLINE=1，容器内不会联网下）
+HF_ENDPOINT=https://hf-mirror.com python3 -c \
+  "from sentence_transformers import CrossEncoder; CrossEncoder('BAAI/bge-reranker-base')"
+
+# 2) 启动（docker-compose 已把宿主 ~/.cache/huggingface 只读挂进容器）
+cp .env.example .env && vim .env      # APP_ENV=prod, LOG_JSON=true, 强随机 ADMIN_PASSWORD
+docker compose up -d --build
+
+# 3) 首次初始化（在 api 容器内）
+docker compose exec api python -m acm_coach.cli init-db
+docker compose exec api python -m acm_coach.cli ingest
+docker compose exec api python -m acm_coach.cli index --max-vectors 1500   # 可反复续跑
+```
+
+上线检查清单：
+
+- 安全组只放 22 / 80 / 443；8000（API）与 8501（前端）用 Nginx 反代，不要裸端口对公网。
+- `ENABLE_DEBUG_API` 保持 `false`——调试路由是整条不注册，开了会暴露检索参数。
+- `DEEPSEEK_API_KEY` 走环境变量注入，`.env` 已在 `.gitignore`，**切勿提交或贴进日志**。
+- 启动后确认日志出现 `重排模型加载成功：`；否则 G4 会静默降级为融合打分。
+- readiness 探针用 `/readyz`（等索引就绪）而非 `/healthz`（只证明进程活着，约 1s 即返回）；预热进度在 `/readyz` 响应的 `warmup` 字段。
+- 内存只有 2GB 时设 `WARMUP_RERANKER=false`，避免常驻 ~1.2GB 重排模型；首次对话会多等约 3s。
+- 建索引是**增量续跑**语义；删语料后向量是快照，需按已知限制 3 重建。
 
 ## 五、语料与数据
 
@@ -163,20 +204,20 @@ python -m acm_coach.cli calibrate --sample 120
 - 阈值标定输出 `data/reports/calibration.json`，含"库规模+模型+度量"指纹
 - `--verify` 护栏：type_boost 开启但候选池 curated 条目为 0 时直接报错退出，防加权静默失效
 
-**实测结果**（数据源：`data/reports/eval_report.json`，生成于 2026-11-08 01:43，150 查询，语料 8,558，向量覆盖率 100%。项目文档、答辩 PPT 与演示口径均以此表为准）：
+**实测结果**（数据源：`data/reports/eval_report.json`，2026-11-21 重跑，150 查询，语料 8,558，门关闭口径。**此表取代 2026-11-08 旧表**——旧表 G1–G3 曾被融合打分静默重排，不是真正的"不重排"）：
 
 | 配置 | Hit@1 | Hit@10 | MRR@10 | NDCG@10 | Recall@100 | P50 | P95 |
 |---|---|---|---|---|---|---|---|
-| g1 BM25 | 0.667 | 0.747 | 0.702 | 0.627 | 0.607 | 23.1ms | 27.7ms |
-| g2 向量 | 0.280 | 0.333 | 0.294 | 0.233 | 0.206 | 39.5ms | 45.3ms |
-| g3 混合 | 0.607 | 0.733 | 0.658 | 0.609 | **0.622** | 65.0ms | 73.4ms |
-| g4 混合+重排 | 0.607 | 0.733 | 0.658 | 0.609 | 0.622 | 65.3ms | 75.9ms |
+| g1 BM25 | **0.660** | 0.753 | **0.697** | 0.628 | 0.607 | 2.4ms | 6.4ms |
+| g2 向量 | 0.240 | 0.327 | 0.270 | 0.219 | 0.207 | 12.9ms | 18.4ms |
+| g3 混合（无重排） | 0.653 | **0.773** | 0.696 | **0.627** | **0.623** | 16.1ms | 20.1ms |
+| g4 混合+真实重排 | 0.633 | 0.733 | 0.667 | 0.613 | 0.623 | 7458ms | 8549ms |
 
-读法（论文请如实呈现，不要只挑好看的）：
-- 合成查询含精确题名，词法通道天然占优，故 g1 头部精度最高；混合的 **Recall@100 最好**，
-  说明向量路确实召回了 BM25 漏掉的相关条目，只是 RRF 把它们排在中段；
-- g2 远低于 g1 是"短文本标题 + bge-small"的固有上限，恰是引入混合架构的动机；
-- g4 ≈ g3 因 `bge-reranker-base` 未缓存，走融合打分降级路径（见已知限制 2）。
+读法（论文与答辩请如实呈现，不要只挑好看的）：
+- **混合的价值成立**：g3 的 Recall@100 / NDCG@10 / Hit@10 均为四组最高，向量路确实召回了 BM25 漏掉的条目；
+- **g2 远低于 g1** 是"短文本标题 + bge-small"的固有上限，恰是引入混合架构的动机；
+- **g4 未复现预期收益，是负结果**：真实 cross-encoder 相对 g3 在 Hit@1 / MRR@10 / NDCG@10 分别 **-2.0 / -2.9 / -1.4 个百分点**，Recall@100 持平。原因是合成查询含精确题名，BM25+RRF 已把正确条目顶到第 1，cross-encoder 按语义相关重排反而把精确匹配条目往后挪。**不要把这组数字说成"重排有效"**；应写"在本合成查询分布上未观察到头部排序收益，需在真实学生提问集上复验"；
+- **延迟是硬伤，但已优化**：g4 在评测深度 `top_n=100` 下 P95=8.5s；生产 `top_n=24` 优化前 3.8–4.1s/问。2026-11-21 三项优化（序列 512→192 token、batch=16、结果 LRU 缓存）后**冷启动 2.85s/问、重复问 14ms/问**，详见 `docs/04 §3.2`。冷启动仍高于 ≤800ms 目标，CPU 学生机建议把重排定位为"可选高精度模式"，并用缓存摊薄热点问题成本。
 
 **三档门控口径**：`similarity = max(向量余弦, BM25 归一化)`，取两路置信度较强者——
 只取向量分会把"BM25 第 1 但余弦一般"的正确条目挡在截断线外（实测误杀案例：「01背包内层循环
@@ -200,7 +241,7 @@ python -m acm_coach.cli calibrate --sample 120
 ## 八、已知限制（答辩请主动说明）
 
 1. ~~向量索引未全量建完~~（已解决，2026-11-08 补齐至 8,558/8,558，覆盖率 100%）。若新增语料，执行 `python -m acm_coach.cli index --max-vectors 1500` 增量补建即可。
-2. **重排模型未启用**：`bge-reranker-base` 未缓存，当前走"0.55 语义 + 0.30 词面 + 0.15 词法"融合打分（`rag/rerank.py` 的降级路径），启用方式见 `.env` 的 `RERANK_MODEL`。
+2. **重排模型需预下载才生效**（2026-11-21 已在本机启用）：`bge-reranker-base` 已缓存到 `~/.cache/huggingface`，G4 走真实 cross-encoder；换一台新机器/新容器若未预下载，会自动降级为"0.55 语义 + 0.30 词面 + 0.15 词法"融合打分（`rag/rerank.py` 的 `fusion-fallback`）。启动日志出现 `重排模型加载成功` 才是真重排；检索结果 `meta.rerank_backend` 会标 `cross-encoder / fusion-fallback / off`。三种后端的启用与隔离见 `docs/04 §3`。
 3. **删除不是即时生效**：向量是快照，删除后需重建索引；`scripts/purge_source.py` 提供按来源清除。
 4. **未做真实判题**：诊断基于静态特征 + 大模型，不执行代码、不接 OJ 沙箱。
 5. **单机部署形态**：登录限流与缓存是进程内实现，多实例需换 Redis。

@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 """认证与口令安全。
 
-口令：PBKDF2-HMAC-SHA256 + 每用户随机盐，迭代次数可配（默认 26 万），
+口令：PBKDF2-HMAC-SHA256 + 每用户随机盐，迭代次数可配（默认 60 万，
+与 docs/05 安全方案一致；单次校验本机实测 ~258ms），
 比对用 `hmac.compare_digest` 防时序侧信道。
 
 会话：无状态 JWT（HS256），claims 含 sub / role / exp / iat / jti，

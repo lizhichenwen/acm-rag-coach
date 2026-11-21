@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import math
+import threading
 import time
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
@@ -115,28 +116,38 @@ class HybridRetriever:
         self.bm25: BM25Index | None = None
         self.vector = vector
         self._loaded = False
+        self._load_lock = threading.Lock()
+        # 仅在实际加载完成后置位；并发调用方在锁上等待，绝不读到半加载状态。
+        self._load_event = threading.Event()
 
     # ---------------- 装配 ----------------
     def attach(self, docs: dict[str, Document], bm25: BM25Index, vector: VectorStore | None) -> None:
         self.docs, self.bm25, self.vector = docs, bm25, vector
         self._loaded = True
+        self._load_event.set()
 
     def ensure_loaded(self) -> None:
-        if self._loaded:
+        """确保索引就绪。后台预热与首个请求并发时：只加载一次，且请求会
+        在锁/事件上等待预热真正完成，绝不读到半加载的空索引。"""
+        if self._load_event.is_set():
             return
-        self._loaded = True  # 防止并发重复加载
-        bm25 = BM25Index.load(self.index_path)
-        if bm25 is None:
-            log.warning("未找到 BM25 索引（%s），请先执行 `python -m acm_coach.cli index`", self.index_path)
-            return
-        self.bm25 = bm25
-        if self.settings.enable_vector:
-            self.vector = VectorStore(self.settings.chroma_dir, self.settings.embed_model,
-                                      enabled=True)
-        # 文档正文从 BM25 索引的同批快照读取，避免每次检索打数据库
-        from acm_coach.rag.docstore import load_docstore
+        with self._load_lock:
+            if self._load_event.is_set():
+                return
+            bm25 = BM25Index.load(self.index_path)
+            if bm25 is None:
+                log.warning("未找到 BM25 索引（%s），请先执行 `python -m acm_coach.cli index`", self.index_path)
+            else:
+                self.bm25 = bm25
+                if self.settings.enable_vector:
+                    self.vector = VectorStore(self.settings.chroma_dir, self.settings.embed_model,
+                                              enabled=True)
+                # 文档正文从 BM25 索引的同批快照读取，避免每次检索打数据库
+                from acm_coach.rag.docstore import load_docstore
 
-        self.docs = load_docstore(self.settings.index_dir)
+                self.docs = load_docstore(self.settings.index_dir)
+            self._loaded = True
+            self._load_event.set()  # 加载完成后才通知等待方
 
     @property
     def ready(self) -> bool:
@@ -240,10 +251,10 @@ class HybridRetriever:
 
         ranked = sorted(hits.values(), key=lambda h: h.rrf_score, reverse=True)[:settings.rerank_top_n]
 
-        # ---- 重排 ----
-        from acm_coach.rag.rerank import rerank
+        # ---- 重排（跟随本检索器自身的 settings，消融分组之间互不影响） ----
+        from acm_coach.rag.rerank import rerank, rerank_backend
 
-        ranked = rerank(query, ranked)
+        ranked = rerank(query, ranked, settings)
 
         # ---- 归一化 + 置信度 ----
         self._normalize(ranked, query)
@@ -259,6 +270,8 @@ class HybridRetriever:
                 "bm25_candidates": len(bm25_ranks),
                 "vector_candidates": len(vec_ranks),
                 "rerank": bool(ranked and ranked[0].rerank_score is not None),
+                # cross-encoder / fusion-fallback / off —— 用于确认 G4 真的走了精排
+                "rerank_backend": rerank_backend(),
                 "quota_applied": quota_applied,
                 "queries": queries,
             },
@@ -375,6 +388,59 @@ def set_retriever(retriever: HybridRetriever | None) -> None:
     """测试注入用。"""
     global _retriever
     _retriever = retriever
+
+
+# ---------------- 后台预热 ----------------
+# 冷启动最慢的一段是 `import sentence_transformers`（本机实测 11.3s），
+# 若放在 lifespan 里同步执行，healthz 要等 15s 才起来，前端登录页一直转圈。
+# 改为：healthz 立即返回，重活在 daemon 线程里做；首个检索请求会经
+# ensure_loaded() 的锁等待预热完成，因此不会拿到半加载的空索引。
+_warmup_started = False
+_warmup_lock = threading.Lock()
+_warmup_done = threading.Event()
+
+
+def warmup_status() -> dict:
+    """非阻塞地报告预热进度，供就绪探针与运维查看。
+
+    index_done 才是 readiness 的依据（readyz 等它）；reranker 预热失败不影响可用性。
+    """
+    retriever_ready = _retriever is not None and _retriever._load_event.is_set()
+    return {"started": _warmup_started,
+            "index_done": retriever_ready,
+            "reranker_done": _warmup_done.is_set()}
+
+
+def start_warmup() -> threading.Thread | None:
+    """启动后台预热（幂等）。返回线程对象便于测试 join。"""
+    global _warmup_started
+    with _warmup_lock:
+        if _warmup_started:
+            return None
+        _warmup_started = True
+
+    def _run() -> None:
+        started = time.perf_counter()
+        try:
+            get_retriever().ensure_loaded()
+            log.info("后台预热完成：索引就绪，耗时 %.1fs", time.perf_counter() - started)
+        except Exception as exc:  # 预热失败不致命，首个请求会再试一次
+            log.warning("后台预热失败（%s），检索将按需重试", exc)
+        finally:
+            # 可选：一并预热重排模型，让首条对话不再等 3s 加载。
+            settings = get_settings()
+            if settings.enable_rerank and getattr(settings, "warmup_reranker", True):
+                try:
+                    from acm_coach.rag.rerank import get_reranker
+                    get_reranker(settings)
+                    log.info("后台预热完成：重排模型就绪，累计 %.1fs", time.perf_counter() - started)
+                except Exception as exc:
+                    log.warning("重排模型预热失败：%s", exc)
+            _warmup_done.set()
+
+    t = threading.Thread(target=_run, name="rag-warmup", daemon=True)
+    t.start()
+    return t
 
 
 def doc_to_dict(doc: Document) -> dict:

@@ -25,15 +25,14 @@ log = get_logger("api")
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     from acm_coach.db import init_db
-    from acm_coach.rag.index import get_retriever
+    from acm_coach.rag.index import start_warmup
 
     settings = get_settings()
     init_db()
-    try:
-        get_retriever().ensure_loaded()
-    except Exception as exc:  # 索引缺失不应阻止服务启动，接口会返回"题库未就绪"
-        log.warning("索引加载失败，检索将不可用：%s", exc)
-    log.info("服务启动 env=%s db=%s", settings.app_env, settings.sqlalchemy_url)
+    # 索引与模型加载放到后台线程：healthz/登录页立即可用（实测冷启动 15.7s → ~1s）。
+    # 首个检索请求会经 ensure_loaded() 的锁等待预热完成，不会拿到半加载索引。
+    start_warmup()
+    log.info("服务启动 env=%s db=%s（索引后台预热中）", settings.app_env, settings.sqlalchemy_url)
     yield
     log.info("服务退出")
 

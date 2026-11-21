@@ -41,6 +41,9 @@ data/chroma/
 data/index/
 data/raw/
 data/logs/
+data/models/
+
+# 重排模型导出/量化产物（可重建，单份 >1GB）
 
 # ---------- 4. 大体积临时产物 ----------
 *.log

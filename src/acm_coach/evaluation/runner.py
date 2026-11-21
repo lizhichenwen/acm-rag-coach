@@ -93,6 +93,7 @@ def _retriever_variant(base: HybridRetriever, mode: str, rerank: bool) -> Hybrid
     r = HybridRetriever(index_path=base.index_path)
     r.docs, r.bm25, r.vector = base.docs, base.bm25, base.vector
     r._loaded = True
+    r._load_event.set()  # 共享已加载索引，勿触发重复加载
     r.settings = base.settings.model_copy(deep=True)
     if mode == "bm25":
         r.vector = None

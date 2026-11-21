@@ -6,6 +6,22 @@
 
 ---
 
+## 0.0 启动延迟调优（2026-11-21）
+
+比赛演示的"登录后转圈"问题定位与修复，与检索精度无关，但直接影响现场观感：
+
+| 阶段 | 优化前 | 优化后 | 手段 |
+|---|---|---|---|
+| `/healthz` 可用（前端可登录） | **15.7s** | **~1.1s** | 把 `sentence_transformers` 导入 + bge-small 加载从 lifespan 同步路径移到 daemon 线程（`start_warmup()`） |
+| 重排模型就绪 | 首次对话 +3s | 后台预热，登录时大概率已完成 | `WARMUP_RERANKER=true` 时预热线程连带加载 cross-encoder |
+| 首个检索请求 | — | 正确等待预热完成 | `ensure_loaded()` 加加载锁 + `Event`，并发方不读半加载索引（`tests/test_startup.py`） |
+
+关键测量（本机 CPU）：`import sentence_transformers` 单独占 **11.3s**，模型 load 仅 236ms、`init_db` 495ms、PBKDF2 单次校验 258ms。所以瓶颈是**导入**不是模型本身——把它挪出启动关键路径即可，无需换框架。
+
+**探针语义**：`/healthz` 只证明进程活着（快）；`/readyz` 检查 DB + 索引并返回 `warmup` 进度，未就绪返回 503。部署时 readiness 必须用后者。内存 2GB 的学生机设 `WARMUP_RERANKER=false`，代价是首次对话多等约 3s。
+
+---
+
 ## 0. 现状基线与本次调优要解决的问题
 
 ### 0.1 v3 链路现状（代码定位）
@@ -25,7 +41,7 @@
 |---|---|---|---|
 | P1 | **纯语义召回，缺 BM25 词面通道** | 题名/算法术语/英文题号（如 `CF1932F`、`LIS`、`KMP`）这类**精确匹配信号**被向量稀释，召回不稳 | 稠密 + 稀疏双路并行 → RRF |
 | P2 | **RRF 在切片粒度而非题目粒度** | 一条长精讲切成 5 片全被召回时，同一题拿 5 份 RRF 分数，挤掉真正的第 2 名（长文档通胀） | 融合前**先塌缩到 problem_id**，每题每路只取最优名次 |
-| P3 | **重排无 top_n 截断** | 召回多少条就重排多少条，8000 库下 recall_k 一涨延迟线性爆炸 | 重排固定 `top_n=30`，文档截断到 384 token |
+| P3 | **重排无 top_n 截断** | 召回多少条就重排多少条，8000 库下 recall_k 一涨延迟线性爆炸 | 重排固定 `top_n=24`（as-built；早期草案 30），文档截断到 384 token |
 | P4 | **绝对阈值 0.55/0.68 与"距离度量 + 库规模"强耦合** | 库从 77 → 8000，最近邻距离整体下移，"未收录"会被大量误判成"强相关"，幻觉率回升 | 改为**分位数标定**，并把标定指纹（库规模/模型/度量）写进配置 |
 
 > ⚠️ **技术前提必须先纠正**：v3 用 `similarity = 1 - distance`，但 Chroma 默认 HNSW 空间是 `l2`（平方欧氏），在未归一化向量上 `1 - d` **不是余弦相似度**。v4 统一改为 **embedding 归一化 + `hnsw:space=cosine`**，此时 `sim = 1 - cos_distance` 才有物理意义，RRF/阈值才有可比性。**改度量本身就会让 0.55/0.68 失效，这正是"必须重标定"的第一个理由。**
@@ -39,7 +55,7 @@ query (含改写/代码信号)
    │        ↓ 均按 problem_id 塌缩
    └─ 加权 RRF (k=60, w_vec=1.0, w_bm25=0.8) → 候选池 60
               ↓
-        cross-encoder 重排 top 30 (bge-reranker-base)
+        cross-encoder 重排 top 24 (bge-reranker-base)
               ↓
         相关性自适应截断（分位数标定三档）
               ↓
@@ -251,6 +267,36 @@ score(d) = w_vec · 1/(k + rank_vec(d)) + w_bm25 · 1/(k + rank_bm25(d))
 
 ## 3. 重排层
 
+### 3.0 三种后端与消融隔离（as-built 2026-11-21）
+
+重排层现在有明确的三态，由**调用方传入的 settings**决定（不再读全局单例）：
+
+| 后端 | 触发条件 | 行为 | 用途 |
+|---|---|---|---|
+| `off` | `enable_rerank=false` | 原样返回，保留 RRF / 词法 / 向量通道顺序，`rerank_score=None` | G1 / G2 / G3 消融，必须"不重排" |
+| `cross-encoder` | `enable_rerank=true` 且模型可加载 | `BAAI/bge-reranker-base` 对 (query, doc) 逐对打分，sigmoid 后排序 | G4，生产目标状态 |
+| `fusion-fallback` | 开启重排但模型未缓存 / 加载失败 / 推理异常 | `0.55·语义 + 0.30·词面覆盖 + 0.15·词法` 线性融合排序 | 离线 / 新机器未预下载时的降级 |
+
+**启用真实重排（一次性）**：
+
+```bash
+# 国内网络走镜像；约 1.1 GB，下载到 ~/.cache/huggingface/hub
+HF_ENDPOINT=https://hf-mirror.com \
+  venv/Scripts/python.exe -c "from sentence_transformers import CrossEncoder; CrossEncoder('BAAI/bge-reranker-base')"
+```
+
+`.env` 中 `ENABLE_RERANK=true`、`RERANK_MODEL=BAAI/bge-reranker-base`；
+`RERANK_DOWNLOAD=false` 表示**只用本地缓存、运行时不联网**（生产推荐）。
+模型没缓存又不允许下载时走 `fusion-fallback`，不报错。
+
+**可观测性**：启动日志出现 `重排模型加载成功：BAAI/bge-reranker-base` 才是真重排；
+每次检索结果 `meta.rerank_backend` 为三者之一，可直接用于核验 G4 是否真的走了精排。
+
+> **为何强调 settings 透传**：早期实现里 `get_reranker()` 读 `get_settings()` 全局单例，
+> 且 `_MODEL_TRIED` 在 `enable_rerank` 判定**之前**置位。后果有两个：① 模型一旦缓存，
+> G1/G2/G3 也会被静默重排，消融对比失真；② 同进程先跑关重排的分组会把"已尝试"锁死，
+> 后面的 G4 永远拿不到模型。现已改为随调用方 settings 走，并由 `tests/test_rerank.py` 锁定。
+
 ### 3.1 cross-encoder 的 top_n 截断
 
 **不截断 = 延迟随库规模爆炸**（P3）。固定截断：
@@ -258,7 +304,7 @@ score(d) = w_vec · 1/(k + rank_vec(d)) + w_bm25 · 1/(k + rank_bm25(d))
 | 参数 | 取值 | 依据 |
 |---|---|---|
 | 重排候选 `top_n` | **24**（as-built，`rerank_top_n=24`） | 24 条足以覆盖 gold（Recall@24 通常 > 0.9），再多边际收益递减；⚠️ 早期草案写 30，实现按 24 落地，以代码为准 |
-| 输入截断 | 文档截到 **384 token**（query 不截） | bge-reranker 512 上限；全 512 会让长精讲重排变慢 ~30% 而增益极小 |
+| 输入截断 | 文档截到 **1200 字符**（as-built，`rerank.py`；query 不截） | CrossEncoder 内部再按模型 max_length=512 token 硬截；早期草案写 384 token，实现按字符落地，以代码为准 |
 | batch | 16 | CPU/GPU 通用吞吐拐点 |
 | 模型 | `BAAI/bge-reranker-base` | v3 已验证；base 比 large 快 2–3×，精度损失 < 1 点 |
 
@@ -275,6 +321,32 @@ score(d) = w_vec · 1/(k + rank_vec(d)) + w_bm25 · 1/(k + rank_bm25(d))
 | **检索合计 P95 目标** | **≤ 700 ms** | **≤ 150 ms** | 不含 LLM 生成 |
 
 **取舍**：重排是"精度最大、成本也最大"的一环。若线上 P95 > 800 ms，先降 `top_n` 到 16，再考虑换 `bge-reranker-v2-m3` 的 ONNX/int8 量化，最后才关重排。**关重排前必须用消融数据证明收益 < 5 个点（见 §6.4）。**
+
+**实测修正（2026-11-21，CPU 6 线程 / 无 GPU / torch 2.15.0+cpu）**：上表的 300–450 ms 是早期量级估算，本机实测远高于此，不能用于答辩：
+
+| 场景 | 实测 | 说明 |
+|---|---|---|
+| 24 对，文档 100 字符 | 1,273 ms | 短文档基准 |
+| 24 对，文档 400 字符 | 4,481 ms | |
+| 24 对，文档 1200 字符（as-built） | 7,529 ms | 生产 `top_n=24` 默认配置 |
+| 评测 `top_n=100`，150 查询 | P50 7,458 / P95 8,549 ms | 消融表 G4 延迟来源 |
+
+**结论（2026-11-21 优化后更新）**：延迟对 **token 长度**比对 `top_n` 更敏感。先纠正一个认知误区：语料正文 p50=361 / p99=423 字符（≈260–300 token），所以 `RERANK_DOC_CHARS=1200` 几乎从不触发截断——**模型实际一直在按 512 token 上限跑满**。真正的旋钮是 `max_length`。
+
+**已落地三项优化**（见 `rag/rerank.py`）：
+
+| 优化 | 参数 | 依据 | 效果 |
+|---|---|---|---|
+| 缩短序列 | `RERANK_MAX_LENGTH=192` | 24 对下 512→192：8.2s→2.9s；与 512 的排序 Spearman **0.965**（30 query 抽样）。再降到 160 相关性掉到 0.756，故 192 是拐点 | 冷启动 4.1s→**2.85s**（约 -30%） |
+| 固定 batch | `RERANK_BATCH_SIZE=16` | 8/16/24/32 实测差异 <10%，16 为吞吐拐点 | 小幅稳定收益 |
+| 结果 LRU 缓存 | `RERANK_CACHE_SIZE=256` | 键 =（query, 候选 id 序列, 模型, max_length）；答辩反复问同一题、热点问题零推理 | 命中 **14ms**（相对 2.85s 约 **200×**） |
+
+**未采用的方案及原因**（记录以免重复踩坑）：
+- **ONNX Runtime**：fp32 实测比 PyTorch 慢（ml=128 时 2.4s vs 1.9s）；
+- **ONNX int8 量化**：导出的计算图存在 shape inference 错误（维度 0：768 vs 1），`quantize_dynamic` 直接报错；需额外工程投入，暂不做；
+- **PyTorch 动态量化**：XLM-RoBERTa 的激活不支持量化内核（`KeyError: 'ne'`）。
+
+**剩余约束**：冷启动 2.85s 仍高于 §3.2 的 ≤800ms 目标。CPU 学生机建议保持重排为**可选高精度模式**，把 `RERANK_CACHE_SIZE` 开大以摊薄热点 query 成本；实时性硬要求时优先 GPU，而不是继续压 `max_length`（会伤精度）。缓存命中率是运维要盯的指标，可用 `rag.rerank.cache_stats()` 与 `/api/v1/ops/config` 的 `rerank_cache_size` 核对。
 
 ### 3.3 无模型时的降级打分公式
 
@@ -826,18 +898,20 @@ def ndcg_at_10(ranked_rels, all_labeled_rels, k=10):
 
 ### 6.3 消融矩阵（4 组必做 + 2 组扩展）
 
-| 组 | 配置 | Hit@1 | Hit@5 | MRR@10 | NDCG@10 | P95 延迟 |
-|---|---|---|---|---|---|---|
-| G1 | **BM25 only** | 待测 | 待测 | 待测 | 待测 | ~20 ms |
-| G2 | **Vector only**（v3 行为） | 待测 | 待测 | 待测 | 待测 | ~25 ms |
-| G3 | **Hybrid（加权 RRF）** | 待测 | 待测 | 待测 | 待测 | ~40 ms |
-| G4 | **Hybrid + Rerank**（v4 完整） | 待测 | 待测 | 待测 | 待测 | ~450 ms |
-| G5（扩展） | G4 + 查询改写 | — | — | — | — | +50 ms |
-| G6（扩展） | G4 + 元数据软加权 | — | — | — | — | +5 ms |
+**as-built 实测（2026-11-21，150 查询 / 8,558 语料 / 门关闭，`data/reports/eval_report.json`）**：
 
-**表内纪律**：① 全部为 `--no-gate`（B1 口径）下的数字；② G2 必须与 v3 的 `--no-gate` 双跑结果一致（差 >1pp 说明实现口径没对齐，先修脚本再往下做）；③ 延迟列为 CPU 单机 P95，标注机器型号。
+| 组 | 配置 | Hit@1 | Hit@5 | MRR@10 | NDCG@10 | Recall@100 | P95 延迟 |
+|---|---|---|---|---|---|---|---|
+| G1 | **BM25 only** | **0.660** | 0.740 | **0.697** | 0.628 | 0.607 | 6.4 ms |
+| G2 | **Vector only** | 0.240 | 0.307 | 0.270 | 0.219 | 0.207 | 18.4 ms |
+| G3 | **Hybrid（加权 RRF，无重排）** | 0.653 | **0.747** | 0.696 | **0.627** | **0.623** | 20.1 ms |
+| G4 | **Hybrid + 真实 cross-encoder 重排** | 0.633 | 0.700 | 0.667 | 0.613 | 0.623 | 8549 ms |
+| G5（扩展） | G4 + 查询改写 | — | — | — | — | — | — |
+| G6（扩展） | G4 + 元数据软加权 | — | — | — | — | — | — |
 
-**预期趋势（用于论文假设）**：G3 相对 G2 的 **Recall@10 提升最大**（补上精确匹配短板，约 +4~8 点）；G4 相对 G3 的 **MRR/NDCG 提升最大**（头部排序，约 +5~10 点），代价是延迟 ×10。若 G3≈G2 或 G4≈G3，说明该改动在本语料上无效，**如实报告**——负结果同样是工作量。
+**表内纪律**：① 全部为门关闭（B1 口径）下的数字，`strong/weak/rel_margin/gap_margin` 均置零/失效；② 2026-11-08 的旧表已作废——旧实现里 G1–G3 实际被 `fusion-fallback` 静默重排，不是"无重排"，修复 settings 透传后数字整体上移；③ 延迟为 CPU 单机 P95（6 线程 / 无 GPU），G4 评测深度为 `rerank_top_n=100`（为支撑 Recall@100 而放宽），生产默认 24。
+
+**结果判读（负结果，不得包装成收益）**：G4 相对 G3 在 Hit@1 / MRR / NDCG 分别 **-2.0 / -2.9 / -1.4 pp**，Recall@100 持平。原因是合成查询模板把精确题名直接拼进 query，BM25+RRF 已把目标条目排到第 1，cross-encoder 按语义相关重排反而把精确匹配往后挪。**这不等于"重排无用"**，只说明本评测集无法体现其设计收益；论文应写清查询分布局限，并注明需在真实学生模糊提问集上复验。G4 的延迟（8.5s）也远超 §3.2 目标，CPU 部署应把 `RERANK_DOC_CHARS` 调小或关闭在线重排。
 
 ### 6.4 显著性检验建议
 
@@ -884,10 +958,10 @@ def ndcg_at_10(ranked_rels, all_labeled_rels, k=10):
 | BM25 | 分词 | jieba + 自定义词典 + 英文整体 token + bigram 兜底 | §1.3 |
 | 召回 | recall_vec / recall_bm25 | 50 / 50 | §1.4 |
 | 融合 | RRF k / 权重 | 60 / `w_vec=1.0, w_bm25=0.8` | §2，需实测 |
-| 融合 | **形态权重 `w_type`** | `source=="curated"`（as-built 挂载点）× **1.15** / 其余 1.0（**跑消融 G1–G4 时 `TYPE_BOOST=false`**；护栏 `_verify_type_boost()` 已验证候选池 curated=96） | §2.2.1，需实测 |
+| 融合 | **形态权重 `w_type`** | `source=="curated"`（as-built 挂载点）× **1.15** / 其余 1.0（as-built 基线在 `TYPE_BOOST=true` 下跑，四组一致、可比；若要做"纯 RRF"对比可置 false 重跑；护栏 `_verify_type_boost()` 已验证候选池 curated=96） | §2.2.1，需实测 |
 | 融合 | **形态配额** | top-5 全为 crawled 时插入 1 条 curated（门槛 0.6×top1），编号按展示顺序重排 | §2.2.1，需实测 |
 | 融合 | 候选池 / 去重键 | 60 / `problem_id`（融合前塌缩） | §2.3 |
-| 重排 | 模型 / top_n / 文档截断 | `bge-reranker-base` / **24**（as-built） / 384 token | §3 |
+| 重排 | 模型 / top_n / 文档截断 | `bge-reranker-base`（**已缓存，G4 真实精排**） / **24**（as-built；评测为支撑 Recall@100 放宽到 100） / 1200 字符 | §3 |
 | 降级 | 打分权重 | 0.55 r_norm + 0.30 cov + 0.15 meta | §3.3，需实测 |
 | 截断 | T_strong / T_weak | **0.9382 / 0.572**（2026-11-08 首轮标定，**dev-150 复核后冻结**，局限见 §4.1.1） | §4.1 |
 | 截断 | 肘部 gap / rel_margin | 0.05（作用于重排归一化分）/ 0.12（作用于置信度，强档 cap） | §4.1 |

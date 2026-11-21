@@ -17,7 +17,7 @@ from acm_coach.config import get_settings
 from acm_coach.core import metrics
 from acm_coach.core.errors import ServiceUnavailable
 from acm_coach.db.repositories import AuditRepository, OpsRepository, UserRepository
-from acm_coach.rag.index import get_retriever
+from acm_coach.rag.index import get_retriever, warmup_status
 
 router = APIRouter(tags=["ops"])
 # 调试类只读接口单独成组，由 app 按 ENABLE_DEBUG_API 条件注册（默认不注册→404）
@@ -44,8 +44,8 @@ def readyz(db: DbSession):
     except Exception:
         pass
     if not checks["database"] or not checks["bm25"]:
-        raise ServiceUnavailable("依赖未就绪", details=checks)
-    return {"status": "ready", **checks}
+        raise ServiceUnavailable("依赖未就绪", details={**checks, "warmup": warmup_status()})
+    return {"status": "ready", **checks, "warmup": warmup_status()}
 
 
 @router.get("/version")
@@ -116,4 +116,6 @@ def config_view(user: StaffUser):
         "embed_text_mode": s.embed_text_mode, "type_boost": s.type_boost,
         "enable_bm25_field_boost": s.enable_bm25_field_boost,
         "bm25_title_weight": s.bm25_title_weight, "bm25_tags_weight": s.bm25_tags_weight,
+        "rerank_max_length": s.rerank_max_length, "rerank_cache_size": s.rerank_cache_size,
+        "warmup_reranker": s.warmup_reranker,
     }

@@ -95,6 +95,23 @@ class Settings(BaseSettings):
     curated_weight: float = 1.15
     curated_quota_ratio: float = 0.6
     rerank_top_n: int = 24
+    # 送进 cross-encoder 的文档截断长度（字符）。注意真正的开销是 tokenizer 后的
+    # token 数：语料 p99 仅 423 字符（≈300 token），所以 1200 字符几乎不触发截断。
+    # 2026-11-21 实测 24 对下 512→192 token 可省约 25% 延迟，
+    # 且与 512 的排序 Spearman 相关 0.965（30 query 抽样），故默认降到 192。
+    rerank_doc_chars: int = 1200
+    # cross-encoder 的 max_length（token）。512 是模型上限，但本项目文档 p50≈260
+    # token，实测 192 已覆盖头部信息且保序性 0.965；再低（≤160）相关性掉到 0.75。
+    rerank_max_length: int = 192
+    # 推理 batch size。实测 8/16/24/32 差异 <10%，16 为吞吐拐点。
+    rerank_batch_size: int = 16
+    # 重排结果 LRU 缓存容量。键为 (query, 候选 id 序列, 模型, max_length)；
+    # 同一 query + 同一候选池的重复请求（答辩演示 / 热点问题）直接命中，零重排开销。
+    # 0 = 关闭缓存。
+    rerank_cache_size: int = 256
+    # 后台预热是否连带加载重排模型：true 让首条对话不再等 3s 模型加载，
+    # 代价是启动后常驻 ~1.2GB 内存。内存紧张的学生机可设 false 改为首次对话懒加载。
+    warmup_reranker: bool = True
     # 相关性三档（max(向量余弦, BM25 归一化) 口径，取两路置信度较强者）
     # 2026-11-08 按 data/reports/calibration.json 回填（指纹 n=8558;bge-small-zh-v1.5;cosine，
     # 门关闭状态裸分测量）：strong = 域内查询下四分位，weak = 域外查询 p90 + 0.02；

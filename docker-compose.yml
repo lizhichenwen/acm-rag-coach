@@ -9,6 +9,9 @@ services:
     volumes:
       - ./data:/app/data          # 索引与数据库持久化
       - ./logs:/app/logs
+      # 重排/嵌入模型缓存：Dockerfile 设了 HF_HUB_OFFLINE=1，容器不会联网下载。
+      # 宿主预下载一次后挂进来，G4 才能真正走 cross-encoder（否则降级融合打分）。
+      - ${HF_CACHE_DIR:-$HOME/.cache/huggingface}:/root/.cache/huggingface:ro
     restart: unless-stopped
 
   ui:

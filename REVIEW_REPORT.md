@@ -109,3 +109,21 @@
 - 模块边界：清晰。API 层只做 HTTP 与校验，服务层只做编排（不含 SQL/HTTP），仓储层封装 SQLAlchemy，检索层独立可消融。换前端/向量库/模型互不牵连。
 - 依赖方向：单向，未见循环依赖。
 - 主要风险：诊断链路缺少真实评测数据支撑，是"工程完成度 > 实证完成度"的唯一明显短板。补上标注实验后，论文的主张与代码即可闭环。
+
+---
+
+## 七、补充：G4 重排启用与消融隔离修复（2026-11-21）
+
+本轮在既有代码上修了两处会**让 G4 消融失真**的问题，并重跑实验；不改诊断模块，不动标注集。
+
+1. **全局配置串组**（真实 bug，已修）：`rag/rerank.py` 原先在 `get_reranker()` 里读 `get_settings()` 单例，且 `_MODEL_TRIED` 在 `enable_rerank` 判定前置位。评测 runner 给每个消融分组深拷贝 settings（G1/G2/G3 关重排、G4 开重排），因此模型一旦缓存：① 三组"不重排"配置会被静默重排；② 若先跑关重排分组，G4 永远拿不到模型。现改为 `rerank(query, hits, settings)` 透传调用方配置，`index.py` 同步传入；`tests/test_rerank.py` 新增 3 个用例锁定该行为。
+2. **三态可观测**：新增 `rerank_backend()` 并写入检索结果 `meta.rerank_backend`（`off / cross-encoder / fusion-fallback`）。启动日志 `重排模型加载成功` 与结果 meta 双重佐证，避免"以为开了其实降级"。
+3. **模型与部署**：`BAAI/bge-reranker-base` 已下载到本机 HF 缓存（约 1.1 GB），G4 现走真实 cross-encoder；`.env(.example)` 补齐 `RERANK_MODEL / RERANK_DOWNLOAD`；`docker-compose.yml` 新增宿主 HF 缓存只读挂载（Dockerfile 设了 `HF_HUB_OFFLINE=1`，不挂就必然降级）。
+
+**证据边界**：新指标来自 `data/reports/eval_report.json`（同 150 查询、同 qrels 规则），只替换旧表，不改标注、不改指标实现；G3 与 G4 的差值现在才具备"重排贡献"的解释力。旧表中 "g4 ≈ g3 因未缓存" 的描述已作废。注意 G1–G3 数字同时上移（如 G3 Hit@1 0.607→0.653），原因是旧版它们被融合打分静默重排，修复后才是真"无重排"。
+
+**新结果（负结果，需如实写进论文）**：G4 vs G3 的 Hit@1 / MRR@10 / NDCG@10 为 0.633 vs 0.653 / 0.667 vs 0.696 / 0.613 vs 0.627，即重排**未带来头部精度收益**，Recall@100 持平。合理解释是合成 query 含精确题名、BM25+RRF 已把目标排到第 1。延迟代价极大（评测深度 P95 8.5s）。**不得把 G4 描述为"精度提升"或声称达到 ≤800ms 目标**；答辩口径为"重排作为可选高精度模式已完成工程接入与消融验证，本数据集上未复现收益，CPU 部署默认关闭"。
+
+**延迟优化（2026-11-21 同日追加）**：定位到真正的瓶颈不是字符数而是 token 数——语料 p99 仅 423 字符（≈300 token），`RERANK_DOC_CHARS=1200` 从不触发截断，模型一直按 512 上限跑满。落地三项：① `RERANK_MAX_LENGTH=192`（与 512 排序 Spearman 0.965，再低掉到 0.756）；② `RERANK_BATCH_SIZE=16`；③ 结果 LRU 缓存（键含 query+候选 id 序列）。实测生产 `top_n=24` **冷启动 4.1s→2.85s（-30%）、重复问 14ms**。ONNX fp32 比 PyTorch 慢、int8 量化因 shape inference 错误失败、PyTorch 动态量化不支持该激活，均已尝试并记录。优化只改推理参数与缓存，不改变打分公式，因此上面的精度结论仍然成立；81 个测试全过。
+
+**启动延迟优化（2026-11-21 同日追加）**：用户反馈"登录后启动慢"。分段实测定位到服务冷启动 **15.7s**，其中 `import sentence_transformers` 单独占 **11.3s**（模型 load 仅 236ms、`init_db` 495ms、PBKDF2 校验 258ms）——瓶颈是**导入**不是模型推理。修复：把索引与模型加载从 `lifespan` 同步路径移到 daemon 线程（`rag/index.py::start_warmup()`），`healthz` **15.7s→1.1s**；`ensure_loaded()` 加加载锁 + `Event`，保证首个请求在预热完成前阻塞等待、不读半加载索引（`tests/test_startup.py` 用假 BM25 模拟慢加载锁定该并发行为）；`WARMUP_RERANKER=true` 让重排模型一并后台预热，消除首条对话的 3s 等待（2GB 内存机器可关）。`/readyz` 响应新增 `warmup` 进度字段。上述改动不动检索/生成算法，83 个测试全过。比赛部署口径：serve 后约 1s 可登录，等 `/readyz` 返回 200 再开始演示问答。
